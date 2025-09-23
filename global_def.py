@@ -1,3 +1,5 @@
+import platform
+
 import utils.log_utils
 from cmd_def import *
 
@@ -10,6 +12,10 @@ UDP_PORT = 9528
 
 MOBILE_TCP_PORT_DEFAULT = 55688
 
+if platform.machine() == "aarch64":
+    LOCAL_IP = "192.168.1.2"
+else:
+    LOCAL_IP = "127.0.0.1"
 
 UNIX_MSG_SERVER_URI = '/tmp/ipc_msg_server.sock'
 UNIX_DEMO_APP_SERVER_URI = '/tmp/ipc_demo_app_server.sock'

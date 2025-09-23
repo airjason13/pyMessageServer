@@ -183,7 +183,7 @@ def main():
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    worker = AsyncWorker(loop)
+    worker = AsyncWorker(loop, tcp_host=LOCAL_IP, udp_host=LOCAL_IP)
 
 
     # 友善的 Ctrl+C 結束
