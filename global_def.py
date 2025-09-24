@@ -1,7 +1,7 @@
 import platform
 
 import utils.log_utils
-from cmd_def import *
+from arglassescmd.cmd_def import *
 from version import *
 LOG_FILE_PREFIX = "msg_server.log"
 

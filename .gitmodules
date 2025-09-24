@@ -1,0 +1,3 @@
+[submodule "arglassescmd"]
+	path = arglassescmd
+	url = https://github.com/airjason13/arglassescmd
