@@ -32,6 +32,10 @@ class AsyncWorker(QObject):
         self.mobile_clients: list[MobileClient] = [] # 可以有多各mobile同時連線ar glasses
         self.demo_app_unix_client = None
         self.le_app_unix_client = None
+        self.sys_app_unix_client = None
+        self.int_mobile_cmd_idx = 0
+
+
 
     async def custom_parser(data: bytes, addr):
         return 0
@@ -65,12 +69,16 @@ class AsyncWorker(QObject):
     ''' 處理 tcp recv data '''
     def tcp_data_recv_handler(self, data:str, addr:tuple):
         log.debug(f"Recv: {data} from {addr}")
+        d = dict(item.split(':', 1) for item in data.split(';'))
+        self.int_mobile_cmd_idx = int(d['idx'])
+        log.debug(f"self.int_mobile_cmd_idx: {self.int_mobile_cmd_idx}")
         try:
             # 如果cmd start with "msg", 不用傳unix msg
             if 'cmd:msg' in data:
                 self.handle_msg_cmd(data, addr)
             else:
-                self._periodic_unix_msg(f"cmd:{data};src:{addr}")
+                # self._periodic_unix_msg(data)
+                self._periodic_unix_msg(d)
         except asyncio.CancelledError:
             log.debug("Cancelled")
         except Exception as e:
@@ -105,18 +113,20 @@ class AsyncWorker(QObject):
         self.unix_server.send_msg_to_mobile.connect(self.send_msg_to_mobile)
         self.demo_app_unix_client = UnixClient(UNIX_DEMO_APP_SERVER_URI)
         self.le_app_unix_client = UnixClient(UNIX_LE_SERVER_URI)
+        self.sys_app_unix_client = UnixClient(UNIX_SYS_SERVER_URI)
         await self.tcp_server.start()
         await self.udp_server.start()
         await self.unix_server.start()
         await self.demo_app_unix_client.connect()
         await self.le_app_unix_client.connect()
+        await self.sys_app_unix_client.connect()
         ''''# === 測試用 新增：每 5 秒觸發一次 test_send_unix_msg ===
         self.timer = QTimer(self)
         self.timer.setInterval(5000)  # 5 秒
         self.timer.timeout.connect(self._periodic_unix_msg)
         self.timer.start()'''
 
-    def _periodic_unix_msg(self, data: str) -> None:
+    def _periodic_unix_msg(self, data: dict) -> None:
         """
         QTimer 觸發時呼叫，安排 coroutine 到 asyncio 事件迴圈
         """
@@ -127,11 +137,27 @@ class AsyncWorker(QObject):
             self.loop
         )
 
-    async def test_send_unix_msg(self, unix_msg:str):
+    async def test_send_unix_msg(self, unix_msg_dict:dict):
         log.debug("test_unix_loop")
-        if unix_msg is None:
+        if unix_msg_dict is None:
             return
-        data_array = unix_msg.split(";")
+
+
+        if "le" in unix_msg_dict['cmd']:
+            prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:le;"
+            log.debug(f"prefix_s: {prefix_s}")
+            await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+        elif "demo" in unix_msg_dict['cmd']:
+            prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:demo;"
+            log.debug(f"prefix_s: {prefix_s}")
+            log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
+            await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+        elif 'sys' in d['cmd']:
+            prefix_s = f"idx:{d['idx']};src:mobile;dst:sys;"
+            log.debug(f"prefix_s: {prefix_s}")
+            log.debug(f"d['cmd']: {d['cmd']}")
+            await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+        '''data_array = unix_msg.split(";")
         log.debug(f"data_array: {data_array}")
         for s in data_array:
             if "cmd" in s:
@@ -142,7 +168,8 @@ class AsyncWorker(QObject):
                 elif "demo" in s.split(":")[1]:
                     log.debug("send to Demo App")
                     prefix_s = "src:mobile;dst:demo;"
-                    await self.demo_app_unix_client.send(prefix_s + s)
+                    
+                    await self.demo_app_unix_client.send(prefix_s + s)'''
 
 
         # await self.demo_app_unix_client.send(unix_msg)
