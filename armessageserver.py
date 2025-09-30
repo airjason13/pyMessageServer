@@ -152,10 +152,10 @@ class AsyncWorker(QObject):
             log.debug(f"prefix_s: {prefix_s}")
             log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
             await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
-        elif 'sys' in d['cmd']:
-            prefix_s = f"idx:{d['idx']};src:mobile;dst:sys;"
+        elif 'sys' in unix_msg_dict['cmd']:
+            prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:sys;"
             log.debug(f"prefix_s: {prefix_s}")
-            log.debug(f"d['cmd']: {d['cmd']}")
+            log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
             await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
         '''data_array = unix_msg.split(";")
         log.debug(f"data_array: {data_array}")
