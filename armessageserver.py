@@ -146,33 +146,27 @@ class AsyncWorker(QObject):
         if "le" in unix_msg_dict['cmd']:
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:le;"
             log.debug(f"prefix_s: {prefix_s}")
-            await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+            if unix_msg_dict['data'] is None:
+                await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+            else:
+                await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
         elif "demo" in unix_msg_dict['cmd']:
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:demo;"
             log.debug(f"prefix_s: {prefix_s}")
             log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
-            await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+            if unix_msg_dict['data'] is None:
+                await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+            else:
+                await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
         elif 'sys' in unix_msg_dict['cmd']:
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:sys;"
             log.debug(f"prefix_s: {prefix_s}")
             log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
-            await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
-        '''data_array = unix_msg.split(";")
-        log.debug(f"data_array: {data_array}")
-        for s in data_array:
-            if "cmd" in s:
-                if "le" in s.split(":")[1]:
-                    log.debug("send to light engine")
-                    prefix_s = "src:mobile;dst:le;"
-                    await self.le_app_unix_client.send(prefix_s + s)
-                elif "demo" in s.split(":")[1]:
-                    log.debug("send to Demo App")
-                    prefix_s = "src:mobile;dst:demo;"
-                    
-                    await self.demo_app_unix_client.send(prefix_s + s)'''
+            if unix_msg_dict['data'] is None:
+                await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
+            else:
+                await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
 
-
-        # await self.demo_app_unix_client.send(unix_msg)
 
 
 
