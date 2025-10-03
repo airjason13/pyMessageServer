@@ -146,7 +146,7 @@ class AsyncWorker(QObject):
         if "le" in unix_msg_dict['cmd']:
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:le;"
             log.debug(f"prefix_s: {prefix_s}")
-            if unix_msg_dict['data'] is None:
+            if unix_msg_dict.get('data') is None:
                 await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
@@ -154,7 +154,7 @@ class AsyncWorker(QObject):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:demo;"
             log.debug(f"prefix_s: {prefix_s}")
             log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
-            if unix_msg_dict['data'] is None:
+            if unix_msg_dict.get('data') is None:
                 await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
@@ -162,7 +162,7 @@ class AsyncWorker(QObject):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:sys;"
             log.debug(f"prefix_s: {prefix_s}")
             log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
-            if unix_msg_dict['data'] is None:
+            if unix_msg_dict.get('data') is None:
                 await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
