@@ -13,7 +13,7 @@ UDP_PORT = 9528
 MOBILE_TCP_PORT_DEFAULT = 55688
 
 if platform.machine() == "aarch64":
-    LOCAL_IP = "192.168.1.2"
+    LOCAL_IP = "0.0.0.0"
 else:
     LOCAL_IP = "127.0.0.1"
 
