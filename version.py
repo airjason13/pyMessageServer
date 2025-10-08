@@ -2,8 +2,8 @@
 Version_PN = "MsgServer"
 Version_Year = '2025'
 Version_Month = '10'
-Version_Date = '07'
-Version_Major = "02"
+Version_Date = '08'
+Version_Major = "01"
 Version_Minor = "00"
 Version_Patch = "00"
 

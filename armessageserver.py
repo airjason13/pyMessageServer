@@ -71,7 +71,7 @@ class AsyncWorker(QObject):
         log.debug(f"Recv: {data} from {addr}")
         d = dict(item.split(':', 1) for item in data.split(';'))
         self.int_mobile_cmd_idx = int(d['idx'])
-        log.debug(f"self.int_mobile_cmd_idx: {self.int_mobile_cmd_idx}")
+        # log.debug(f"self.int_mobile_cmd_idx: {self.int_mobile_cmd_idx}")
         try:
             # 如果cmd start with "msg", 不用傳unix msg
             if 'cmd:msg' in data:
@@ -138,7 +138,7 @@ class AsyncWorker(QObject):
         )
 
     async def test_send_unix_msg(self, unix_msg_dict:dict):
-        log.debug("test_unix_loop")
+        # log.debug("test_unix_loop")
         if unix_msg_dict is None:
             return
 
@@ -172,7 +172,7 @@ class AsyncWorker(QObject):
 
     async def async_job(self, cmd:str, data=None):
 
-        log.debug("[%s] start", cmd)
+        # log.debug("[%s] start", cmd)
         if "initial" in cmd:
             await self.start_all_server()
         elif "test_unix_loop" in cmd:

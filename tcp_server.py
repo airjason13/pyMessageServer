@@ -22,9 +22,12 @@ class TCPServer(QObject):
         self._serve_task: Optional[asyncio.Task] = None
         self.parser = parser
 
-    def is_data_valid(self, data:bytes) -> str:
-        # To be implemented
-        log.debug("Need To be implemented")
+    def is_data_valid(self, data:str) -> str:
+        try:
+            d = dict(item.split(':', 1) for item in data.split(';'))
+        except ValueError:
+            log.error(f"Invalid msg format : {data}")
+            return STR_REPLY_NG
         return STR_REPLY_OK
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -37,10 +40,12 @@ class TCPServer(QObject):
                     break
                 msg = data.decode(errors="ignore")
                 log.debug("[TCP]   Received: %s from %s", msg, addr)
-                writer.write(f"{msg}".encode() + f"{self.is_data_valid(data)}".encode())
+                ok_or_ng = self.is_data_valid(msg)
+                writer.write(f"{msg}".encode() + f"{ok_or_ng}".encode())
                 await writer.drain()
-                # Use qsignal first, let's try
-                self.tcp_data_received.emit(msg, addr)
+                if ok_or_ng == STR_REPLY_OK:
+                    # parse to armessageserver to handle
+                    self.tcp_data_received.emit(msg, addr)
 
         except asyncio.CancelledError:
             raise
