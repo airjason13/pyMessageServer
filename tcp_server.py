@@ -35,7 +35,7 @@ class TCPServer(QObject):
         log.debug("[TCP] + Connection from %s", addr)
         try:
             while True:
-                data = await reader.read(1024)
+                data = await reader.read(TCP_MAX_PACKET_SIZE)
                 if not data:
                     break
                 msg = data.decode(errors="ignore")

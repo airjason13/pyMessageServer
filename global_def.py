@@ -10,6 +10,9 @@ log = utils.log_utils.logging_init(__file__, LOG_FILE_PREFIX)
 TCP_PORT = 9527
 UDP_PORT = 9528
 
+TCP_MAX_PACKET_SIZE = 4096
+
+
 MOBILE_TCP_PORT_DEFAULT = 55688
 
 if platform.machine() == "aarch64":

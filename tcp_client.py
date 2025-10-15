@@ -26,7 +26,7 @@ class TCPServer(QObject):
                 self.writer.write(send_data.encode())
                 await self.writer.drain()
                 await asyncio.sleep(0.01)
-                data = await self.reader.read(1024)
+                data = await self.reader.read(TCP_MAX_PACKET_SIZE)
                 log.debug(f"Received from {self.host_ip}:{self.host_port}: {data}")
                 await asyncio.sleep(0.01)
         except Exception as e:
