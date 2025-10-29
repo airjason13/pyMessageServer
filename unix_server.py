@@ -1,5 +1,6 @@
 import asyncio
 import os
+import socket
 from typing import Optional
 
 from PyQt5.QtCore import pyqtSignal, QObject
@@ -15,19 +16,25 @@ class UnixServer(QObject):
         self.path = path
         self._server: Optional[asyncio.base_events.Server] = None
         self._task: Optional[asyncio.Task] = None
+        self.snd_size = UNIX_SOCKET_BUFFER_SIZE # 4 * 1024 * 1024  # 4 MiB
+        self.rcv_size = UNIX_SOCKET_BUFFER_SIZE # 4 * 1024 * 1024
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         addr = writer.get_extra_info("peername")
         # print(f"[UnixServer] + Connection {addr}")
         log.debug("[UnixServer] + Connection %s", addr)
+
         try:
             while True:
-                data = await reader.read(1024)
+                sock = writer.get_extra_info("socket")
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, self.snd_size)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.rcv_size)
+                data = await reader.read(self.rcv_size)
                 if not data:
                     break
                 msg = data.decode(errors="ignore")
                 # print(f"[UnixServer]   Received: {msg}")
-                log.debug("[UnixServer] + Received: %s", msg)
+                log.debug(f"[UnixServer] + Received len: {len(msg)}")
                 writer.write(f"{msg}".encode() + STR_REPLY_OK.encode())
                 await writer.drain()
                 # 如果要送到mobile的話
@@ -37,7 +44,8 @@ class UnixServer(QObject):
                     if d.get("src") in ("le", "sys", "demo"):
                         d["src"] = "msg"
                         result = ";".join(f"{k}:{v}" for k, v in d.items())
-                        log.debug("result: %s", result)
+                        # log.debug("result: %s", result)
+                        log.debug(f"result len: {len(result)}")
                         self.send_msg_to_mobile.emit(result)
         except asyncio.CancelledError:
             raise

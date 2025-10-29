@@ -85,7 +85,7 @@ class AsyncWorker(QObject):
             log.debug(e)
 
     def send_msg_to_mobile(self, send_data:str):
-        log.debug(f"Send: {send_data}")
+        # log.debug(f"Send: {send_data}")
         for c in self.mobile_clients:
             asyncio.run_coroutine_threadsafe(
                 c.send(send_data),

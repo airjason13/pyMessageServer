@@ -1,5 +1,6 @@
 import asyncio
 import os
+import socket
 from typing import Optional
 from global_def import *
 
@@ -9,7 +10,8 @@ class UnixClient:
         self.path = path
         self.reader: Optional[asyncio.StreamReader] = None
         self.writer: Optional[asyncio.StreamWriter] = None
-
+        self.snd_size = UNIX_SOCKET_BUFFER_SIZE # 4 * 1024 * 1024  # 4 MiB
+        self.rcv_size = UNIX_SOCKET_BUFFER_SIZE # 4 * 1024 * 1024
 
     async def connect(self):
         log.debug("[UnixClient] Connecting...")
@@ -17,6 +19,9 @@ class UnixClient:
         self.writer = None
         try:
             self.reader, self.writer = await asyncio.open_unix_connection(self.path)
+            sock = self.writer.get_extra_info("socket")
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, self.snd_size)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.rcv_size)
             log.debug(f"[UnixClient] Connected to {self.path}")
         except Exception as e:
             log.debug(f"[UnixClient] Failed to connect to {self.path}: {e}")
@@ -41,9 +46,9 @@ class UnixClient:
             await self.reconnect()
             return -1
 
-
-        data = await self.reader.read(1024)
+        data = await self.reader.read(self.rcv_size)
         log.debug(f"[UnixClient] Received: {data.decode()}")
+        return 0
 
     async def close(self):
         if self.writer is not None:
