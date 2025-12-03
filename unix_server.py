@@ -32,21 +32,24 @@ class UnixServer(QObject):
                 data = await reader.read(self.rcv_size)
                 if not data:
                     break
-                msg = data.decode(errors="ignore")
-                # print(f"[UnixServer]   Received: {msg}")
-                log.debug(f"[UnixServer] + Received len: {len(msg)}")
-                writer.write(f"{msg}".encode() + STR_REPLY_OK.encode())
-                await writer.drain()
-                # 如果要送到mobile的話
-                if 'dst:mobile' in msg:
-                    # 先將msg轉成dict, 在替換掉src
-                    d = dict(item.split(":", 1) for item in msg.split(";"))
-                    if d.get("src") in ("le", "sys", "demo"):
-                        d["src"] = "msg"
-                        result = ";".join(f"{k}:{v}" for k, v in d.items())
-                        # log.debug("result: %s", result)
-                        log.debug(f"result len: {len(result)}")
-                        self.send_msg_to_mobile.emit(result)
+                msg_temp = data.decode(errors="ignore")
+                log.debug(f"[UnixServer]   Received: {msg_temp}")
+                # msg做成list,看有幾筆
+                msg_list = msg_temp.split("idx")
+                for m in msg_list:
+                    msg = f"idx{m}"
+                    writer.write(f"{msg}".encode() + STR_REPLY_OK.encode())
+                    await writer.drain()
+                    # 如果要送到mobile的話
+                    if 'dst:mobile' in msg:
+                        # 先將msg轉成dict, 在替換掉src
+                        d = dict(item.split(":", 1) for item in msg.split(";"))
+                        if d.get("src") in ("le", "sys", "demo"):
+                            d["src"] = "msg"
+                            result = ";".join(f"{k}:{v}" for k, v in d.items())
+                            log.debug("result: %s", result)
+                            # log.debug(f"result len: {len(result)}")
+                            self.send_msg_to_mobile.emit(result)
         except asyncio.CancelledError:
             raise
         except Exception as e:

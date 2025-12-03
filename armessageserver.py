@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import signal
 from sys import argv
 
@@ -34,6 +35,8 @@ class AsyncWorker(QObject):
         self.le_app_unix_client = None
         self.sys_app_unix_client = None
         self.int_mobile_cmd_idx = 0
+        # set for fewer log message
+        # log.setLevel(logging.INFO)
 
 
 
@@ -87,6 +90,7 @@ class AsyncWorker(QObject):
     def send_msg_to_mobile(self, send_data:str):
         # log.debug(f"Send: {send_data}")
         for c in self.mobile_clients:
+            log.debug(f"Send: {send_data}")
             asyncio.run_coroutine_threadsafe(
                 c.send(send_data),
                 self.loop
@@ -130,7 +134,7 @@ class AsyncWorker(QObject):
         """
         QTimer 觸發時呼叫，安排 coroutine 到 asyncio 事件迴圈
         """
-        log.debug("")
+        # log.debug("")
         # 例如傳送字串 "Hello from QTimer"
         asyncio.run_coroutine_threadsafe(
             self.test_send_unix_msg(data),
@@ -145,23 +149,23 @@ class AsyncWorker(QObject):
 
         if unix_msg_dict.get('cmd').startswith('le'):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:le;"
-            log.debug(f"prefix_s: {prefix_s}")
+            # log.debug(f"prefix_s: {prefix_s}")
             if unix_msg_dict.get('data') is None:
                 await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
         elif unix_msg_dict.get('cmd').startswith('demo'):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:demo;"
-            log.debug(f"prefix_s: {prefix_s}")
-            log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
+            # log.debug(f"prefix_s: {prefix_s}")
+            # log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
             if unix_msg_dict.get('data') is None:
                 await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
         elif unix_msg_dict.get('cmd').startswith('sys'):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:sys;"
-            log.debug(f"prefix_s: {prefix_s}")
-            log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
+            # log.debug(f"prefix_s: {prefix_s}")
+            # log.debug(f"d['cmd']: {unix_msg_dict['cmd']}")
             if unix_msg_dict.get('data') is None:
                 await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:

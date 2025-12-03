@@ -12,6 +12,7 @@ class MobileClient(QObject):
         self.reader, self.writer = None, None
         self.snd_size = TCP_MAX_PACKET_SIZE  # 4 * 1024 * 1024  # 4 MiB
         self.rcv_size = TCP_MAX_PACKET_SIZE  # 4 * 1024 * 1024
+        self._send_lock = asyncio.Lock()
 
     async def connect(self):
         log.debug(f"Connecting to {self.mobile_host_ip}:{self.mobile_tcp_port}")
@@ -27,6 +28,29 @@ class MobileClient(QObject):
             log.debug(e)
 
     async def send(self, send_data: str):
+        async with self._send_lock:  # 確保一次只能一個 send 在執行
+            try:
+                if not self.writer or self.writer.is_closing():
+                    return
+
+                self.writer.write(send_data.encode())
+                await self.writer.drain()
+
+                # 這裡可以加 timeout 避免永久卡住
+                data = await asyncio.wait_for(
+                    self.reader.read(self.rcv_size),
+                    timeout=5.0
+                )
+                log.debug(f"Received: {data}")
+                return data
+
+            except asyncio.TimeoutError:
+                log.error("Receive timeout")
+            except Exception as e:
+                log.error(f"Send error: {e}")
+                raise
+
+    async def send_deprecated(self, send_data: str):
         try:
             if self.writer:
                 self.writer.write(send_data.encode())
