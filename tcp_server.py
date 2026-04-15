@@ -33,25 +33,55 @@ class TCPServer(QObject):
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         addr = writer.get_extra_info("peername")
         log.debug("[TCP] + Connection from %s", addr)
+
         try:
+            buffer = b""
+
             while True:
-                data = await reader.read(TCP_MAX_PACKET_SIZE)
-                if not data:
+                chunk = await reader.read(4096)
+                if chunk:
+                    log.debug("[TCP] chunk len=%d tail=%r", len(chunk), chunk[-40:])
+                else:
+                    log.debug("[TCP] chunk len=0")
+
+                if not chunk:
+                    if buffer:
+                        log.warning(
+                            "[TCP] Incomplete trailing data from %s: len(buffer)=%d head=%r tail=%r",
+                            addr, len(buffer), buffer[:80], buffer[-80:]
+                        )
                     break
-                msg = data.decode(errors="ignore")
-                log.debug("[TCP]   Received: %s from %s", msg, addr)
-                ok_or_ng = self.is_data_valid(msg)
-                writer.write(f"{msg}".encode() + f"{ok_or_ng}".encode())
-                await writer.drain()
-                if ok_or_ng == STR_REPLY_OK:
-                    # parse to armessageserver to handle
-                    self.tcp_data_received.emit(msg, addr)
+
+                buffer += chunk
+                log.debug("[TCP] buffer len=%d", len(buffer))
+
+                while b"\n" in buffer:
+                    raw_msg, buffer = buffer.split(b"\n", 1)
+
+                    if not raw_msg:
+                        continue
+
+                    log.debug(
+                        "[TCP] raw_msg len=%d tail=%r remain_buffer=%d",
+                        len(raw_msg), raw_msg[-80:], len(buffer)
+                    )
+
+                    msg = raw_msg.decode(errors="ignore")
+                    log.debug("[TCP]   Received: %s from %s", msg, addr)
+
+                    ok_or_ng = self.is_data_valid(msg)
+
+                    writer.write((msg + ok_or_ng + "\n").encode())
+                    await writer.drain()
+
+                    if ok_or_ng == STR_REPLY_OK:
+                        self.tcp_data_received.emit(msg, addr)
 
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.debug("[TCP] ! Error with %s ", addr)
-            log.debug(f"[TCP] ! Error with {e} ")
+            log.debug("[TCP] ! Error with %s", addr)
+            log.debug("[TCP] ! Error: %s", e)
         finally:
             log.debug("[TCP] ! Close %s", addr)
             try:

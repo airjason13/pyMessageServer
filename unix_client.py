@@ -39,7 +39,8 @@ class UnixClient:
             raise RuntimeError("Client not connected")
         log.debug(f"[UnixClient] Send: {msg}")
         try:
-            self.writer.write(msg.encode())
+            # log.debug("[MsgServer UnixClient] len(msg)=%d tail=%r", len(msg), msg[-80:])
+            self.writer.write((msg + "\n").encode())
             await self.writer.drain()
         except Exception as e:
             log.debug(f"[UnixClient] Send: {e}")
