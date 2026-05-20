@@ -32,5 +32,9 @@ STR_REPLY_NG = ";NG"
 # Bluetooth Configuration
 BT_NAME = "imx93frdm"
 BT_CLASS = "0x2c0000"  # Device Identifie
-BT_RFCOMM_CHANNEL = 1  # Default RFCOMM channel
+
+BT_RFCOMM_CMD_DEV = "/dev/rfcomm0"
+BT_RFCOMM_DATA_DEV = "/dev/rfcomm1"
+BT_RFCOMM_CMD_CHANNEL = 1
+BT_RFCOMM_DATA_CHANNEL = 2
 BT_FORWARD_UNIX_ACK = True

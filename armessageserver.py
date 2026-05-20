@@ -34,7 +34,8 @@ class AsyncWorker(QObject):
         self.udp_server = None
         self.unix_server = None
         self.bt_initializer = None
-        self.bt_server = None
+        self.bt_cmd_server = None
+        self.bt_data_server = None
 
         self.mobile_clients: list[MobileClient] = [] # 可以有多各mobile同時連線ar glasses
         self.demo_app_unix_client = None
@@ -109,17 +110,19 @@ class AsyncWorker(QObject):
         except Exception as e:
             log.debug(f"tcp_data_recv_handler error: {e}, data={data}")
 
-    def send_msg_to_mobile(self, send_data:str):
-        # log.debug(f"Send: {send_data}")
+    def send_msg_to_mobile(self, send_data: str):
+        # WiFi / TCP mobile
         for c in self.mobile_clients:
             log.debug(f"Send: {send_data}")
             asyncio.run_coroutine_threadsafe(
                 c.send(send_data),
                 self.loop
             )
-        # BT mobile
-        if self.bt_server is not None:
-            self.bt_server.send(send_data)
+
+        # BT final data response goes through CH2
+        if self.bt_data_server is not None:
+            log.debug(f"[BT_DATA] TX final data: {send_data}")
+            self.bt_data_server.send(send_data)
 
     # mobile 斷線後要把tcp client 清除
     def mobile_client_disconnect(self, tuple):
@@ -131,11 +134,23 @@ class AsyncWorker(QObject):
                 self.mobile_clients.remove(c)
         log.debug("len(self.mobile_clients): %d", len(self.mobile_clients))
 
-    def bt_disconnect_handler(self, addr):
-        log.debug(f"[BT] disconnect: {addr}")
+    def bt_cmd_disconnect_handler(self, addr):
+        log.debug(f"[BT_CMD] disconnect: {addr}")
 
         if self.bt_initializer is not None:
-            self.bt_initializer.restart_rfcomm_listener()
+            self.bt_initializer.restart_rfcomm_listener(
+                BT_RFCOMM_CMD_DEV,
+                BT_RFCOMM_CMD_CHANNEL,
+            )
+
+    def bt_data_disconnect_handler(self, addr):
+        log.debug(f"[BT_DATA] disconnect: {addr}")
+
+        if self.bt_initializer is not None:
+            self.bt_initializer.restart_rfcomm_listener(
+                BT_RFCOMM_DATA_DEV,
+                BT_RFCOMM_DATA_CHANNEL,
+            )
 
     async def start_all_server(self):
         log.debug("")
@@ -164,15 +179,21 @@ class AsyncWorker(QObject):
             self.bt_initializer = BtInitializer(
                 bt_name=BT_NAME,
                 bt_class=BT_CLASS,
-                channel=BT_RFCOMM_CHANNEL,
+
             )
             self.bt_initializer.init()
 
-            # BT transport
-            self.bt_server = BtRfcommTransport("/dev/rfcomm0")
-            self.bt_server.bt_data_received.connect(self.tcp_data_recv_handler)
-            self.bt_server.bt_disconnected.connect(self.bt_disconnect_handler)
-            self.bt_server.start()
+            # BT CH1: command/control, same as TCP 9527
+            self.bt_cmd_server = BtRfcommTransport(BT_RFCOMM_CMD_DEV)
+            self.bt_cmd_server.bt_data_received.connect(self.tcp_data_recv_handler)
+            self.bt_cmd_server.bt_disconnected.connect(self.bt_cmd_disconnect_handler)
+            self.bt_cmd_server.start()
+
+            # BT CH2: final data response, same role as 9528 data path
+            self.bt_data_server = BtRfcommTransport(BT_RFCOMM_DATA_DEV)
+            self.bt_data_server.bt_disconnected.connect(self.bt_data_disconnect_handler)
+            self.bt_data_server.start()
+
         ''''# === 測試用 新增：每 5 秒觸發一次 test_send_unix_msg ===
         self.timer = QTimer(self)
         self.timer.setInterval(5000)  # 5 秒
@@ -232,7 +253,7 @@ class AsyncWorker(QObject):
         if (
                 sent_ok and
                 BT_FORWARD_UNIX_ACK and
-                self.bt_server is not None
+                self.bt_cmd_server is not None
         ):
             ack_msg = (
                 f"idx:{unix_msg_dict['idx']};"
@@ -244,7 +265,7 @@ class AsyncWorker(QObject):
 
             log.debug(f"[BT_ACK] TX: {ack_msg}")
 
-            self.bt_server.send(ack_msg)
+            self.bt_cmd_server.send(ack_msg)
 
 
     async def async_job(self, cmd:str, data=None):

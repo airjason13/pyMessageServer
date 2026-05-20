@@ -10,17 +10,15 @@ class BtInitializer:
         self,
         bt_name=BT_NAME,
         bt_class=BT_CLASS,
-        channel=BT_RFCOMM_CHANNEL,
         bluetoothd_path="/usr/libexec/bluetooth/bluetoothd",
     ):
 
         self.bt_name = bt_name
         self.bt_class = bt_class
-        self.channel = channel
         self.bluetoothd_path = bluetoothd_path
 
         self.bluetoothd_proc = None
-        self.rfcomm_proc = None
+        self.rfcomm_procs = {}
         self.agent = None
 
 
@@ -108,30 +106,42 @@ class BtInitializer:
         self.agent = AutoAgent()
         self.agent.start()
 
-        # register SPP service
+        # register SPP services
         self.run(
-            f"sdptool add --channel={self.channel} SP || true"
+            f"sdptool add --channel={BT_RFCOMM_CMD_CHANNEL} SP || true"
         )
 
-        # start rfcomm listener
-        self.start_rfcomm_listener()
+        self.run(
+            f"sdptool add --channel={BT_RFCOMM_DATA_CHANNEL} SP || true"
+        )
+
+        # start rfcomm listeners
+        self.start_rfcomm_listener(
+            BT_RFCOMM_CMD_DEV,
+            BT_RFCOMM_CMD_CHANNEL,
+        )
+
+        self.start_rfcomm_listener(
+            BT_RFCOMM_DATA_DEV,
+            BT_RFCOMM_DATA_CHANNEL,
+        )
 
         log.debug("[BT_INIT] done")
 
-    def start_rfcomm_listener(self):
-        log.debug("[BT_INIT] start rfcomm listener")
+    def start_rfcomm_listener(self, dev_path, channel):
+        log.debug("[BT_INIT] start rfcomm listener dev=%s ch=%s", dev_path, channel)
 
         try:
-            self.stop_rfcomm_listener()
+            self.stop_rfcomm_listener(dev_path)
 
             time.sleep(1)
 
-            self.rfcomm_proc = subprocess.Popen(
+            proc = subprocess.Popen(
                 [
                     "rfcomm",
                     "listen",
-                    "/dev/rfcomm0",
-                    str(self.channel),
+                    dev_path,
+                    str(channel),
                 ],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -139,74 +149,83 @@ class BtInitializer:
                 start_new_session=True,
             )
 
+            self.rfcomm_procs[dev_path] = proc
+
             log.debug(
-                "[BT_INIT] rfcomm listener started pid=%s channel=%s",
-                self.rfcomm_proc.pid,
-                self.channel,
+                "[BT_INIT] rfcomm listener started pid=%s dev=%s channel=%s",
+                proc.pid,
+                dev_path,
+                channel,
             )
 
         except Exception as e:
-            log.debug(f"[BT_INIT] rfcomm listener error: {e}")
-            self.rfcomm_proc = None
+            log.debug(f"[BT_INIT] rfcomm listener error dev={dev_path} ch={channel}: {e}")
+            self.rfcomm_procs.pop(dev_path, None)
 
-    def restart_rfcomm_listener(self):
-        log.debug("[BT_INIT] restart rfcomm listener")
+    def restart_rfcomm_listener(self, dev_path, channel):
+        log.debug("[BT_INIT] restart rfcomm listener dev=%s ch=%s", dev_path, channel)
 
-        self.stop_rfcomm_listener()
+        self.stop_rfcomm_listener(dev_path)
         time.sleep(1)
-        self.start_rfcomm_listener()
+        self.start_rfcomm_listener(dev_path, channel)
 
-    def stop_rfcomm_listener(self):
-        log.debug("[BT_INIT] stop rfcomm listener")
+    def stop_rfcomm_listener(self, dev_path=None):
+        log.debug("[BT_INIT] stop rfcomm listener dev=%s", dev_path)
 
-        try:
-            if self.rfcomm_proc:
-                if self.rfcomm_proc.poll() is None:
-                    log.debug("[BT_INIT] terminate rfcomm pid=%s", self.rfcomm_proc.pid)
-                    self.rfcomm_proc.terminate()
+        targets = []
 
-                    try:
-                        self.rfcomm_proc.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        log.debug("[BT_INIT] kill rfcomm pid=%s", self.rfcomm_proc.pid)
-                        self.rfcomm_proc.kill()
-                        self.rfcomm_proc.wait(timeout=2)
-                else:
-                    # child already exited, reap it
-                    ret = self.rfcomm_proc.wait()
-                    log.debug("[BT_INIT] rfcomm already exited ret=%s", ret)
+        if dev_path is None:
+            targets = list(self.rfcomm_procs.keys())
+        else:
+            targets = [dev_path]
 
-                self.rfcomm_proc = None
-
-        except Exception as e:
-            log.debug(f"[BT_INIT] stop rfcomm error: {e}")
-
-        # release kernel rfcomm binding
-        self.run("rfcomm release all || true")
-
-        # cleanup possible orphan rfcomm listen
-        self.run('pkill -f "rfcomm listen" || true')
-
-    def check_rfcomm_listener(self):
-        """
-        Check whether rfcomm listen process is still alive.
-        If exited, reap it and restart listener.
-        """
-
-        if not self.rfcomm_proc:
-            log.debug("[BT_INIT] rfcomm_proc is None, restart listener")
-            self.start_rfcomm_listener()
-            return
-
-        ret = self.rfcomm_proc.poll()
-
-        if ret is not None:
-            log.debug("[BT_INIT] rfcomm listener exited ret=%s, restart", ret)
+        for path in targets:
+            proc = self.rfcomm_procs.get(path)
 
             try:
-                self.rfcomm_proc.wait(timeout=1)
-            except Exception:
-                pass
+                if proc:
+                    if proc.poll() is None:
+                        log.debug("[BT_INIT] terminate rfcomm pid=%s dev=%s", proc.pid, path)
+                        proc.terminate()
 
-            self.rfcomm_proc = None
-            self.start_rfcomm_listener()
+                        try:
+                            proc.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            log.debug("[BT_INIT] kill rfcomm pid=%s dev=%s", proc.pid, path)
+                            proc.kill()
+                            proc.wait(timeout=2)
+                    else:
+                        ret = proc.wait()
+                        log.debug("[BT_INIT] rfcomm already exited ret=%s dev=%s", ret, path)
+
+            except Exception as e:
+                log.debug(f"[BT_INIT] stop rfcomm error dev={path}: {e}")
+
+            self.rfcomm_procs.pop(path, None)
+
+        if dev_path is None:
+            self.run("rfcomm release all || true")
+            self.run('pkill -f "rfcomm listen" || true')
+        else:
+            self.run(f"rfcomm release {dev_path} || true")
+
+    def check_rfcomm_listener(self):
+        for dev, ch in [
+            (BT_RFCOMM_CMD_DEV, BT_RFCOMM_CMD_CHANNEL),
+            (BT_RFCOMM_DATA_DEV, BT_RFCOMM_DATA_CHANNEL),
+        ]:
+            proc = self.rfcomm_procs.get(dev)
+
+            if proc is None or proc.poll() is not None:
+                if proc is not None:
+                    try:
+                        proc.wait(timeout=0)
+                    except Exception:
+                        pass
+                log.debug(
+                    f"[BT_INIT] restart dead rfcomm listener "
+                    f"dev={dev} ch={ch}"
+                )
+
+                self.rfcomm_procs.pop(dev, None)
+                self.start_rfcomm_listener(dev, ch)
