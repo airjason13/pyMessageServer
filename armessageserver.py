@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import signal
+import platform
+
 from sys import argv
 
 from PyQt5.QtCore import QCoreApplication, QObject
@@ -12,7 +14,8 @@ from tcp_server import TCPServer
 from udp_server import UDPServer
 from unix_client import UnixClient
 from unix_server import UnixServer
-
+from bt_rfcomm_transport import BtRfcommTransport
+from bt_init import BtInitializer
 
 class AsyncWorker(QObject):
     """一個在獨立 Thread 中運行 asyncio 事件迴圈的類別"""
@@ -30,11 +33,15 @@ class AsyncWorker(QObject):
         self.tcp_server = None
         self.udp_server = None
         self.unix_server = None
+        self.bt_initializer = None
+        self.bt_server = None
+
         self.mobile_clients: list[MobileClient] = [] # 可以有多各mobile同時連線ar glasses
         self.demo_app_unix_client = None
         self.le_app_unix_client = None
         self.sys_app_unix_client = None
         self.int_mobile_cmd_idx = 0
+
         # set for fewer log message
         # log.setLevel(logging.INFO)
 
@@ -70,22 +77,37 @@ class AsyncWorker(QObject):
                 )
 
     ''' 處理 tcp recv data '''
-    def tcp_data_recv_handler(self, data:str, addr:tuple):
+    def tcp_data_recv_handler(self, data: str, addr: tuple):
         log.debug(f"Recv: {data} from {addr}")
-        d = dict(item.split(':', 1) for item in data.split(';'))
-        self.int_mobile_cmd_idx = int(d['idx'])
-        # log.debug(f"self.int_mobile_cmd_idx: {self.int_mobile_cmd_idx}")
+
         try:
-            # 如果cmd start with "msg", 不用傳unix msg
-            if 'cmd:msg' in data:
+            data = data.strip()
+            data = data.replace("^J", "")
+            data = data.replace("\r", "")
+            data = data.replace("\n", "")
+            data = data.strip()
+
+            d = dict(
+                item.split(":", 1)
+                for item in data.split(";")
+                if ":" in item
+            )
+
+            if "idx" not in d or "cmd" not in d:
+                log.debug(f"Invalid msg missing idx/cmd: {data}")
+                return
+
+            self.int_mobile_cmd_idx = int(d["idx"])
+
+            if "cmd:msg" in data:
                 self.handle_msg_cmd(data, addr)
             else:
-                # self._periodic_unix_msg(data)
                 self._periodic_unix_msg(d)
+
         except asyncio.CancelledError:
             log.debug("Cancelled")
         except Exception as e:
-            log.debug(e)
+            log.debug(f"tcp_data_recv_handler error: {e}, data={data}")
 
     def send_msg_to_mobile(self, send_data:str):
         # log.debug(f"Send: {send_data}")
@@ -95,6 +117,9 @@ class AsyncWorker(QObject):
                 c.send(send_data),
                 self.loop
             )
+        # BT mobile
+        if self.bt_server is not None:
+            self.bt_server.send(send_data)
 
     # mobile 斷線後要把tcp client 清除
     def mobile_client_disconnect(self, tuple):
@@ -106,24 +131,48 @@ class AsyncWorker(QObject):
                 self.mobile_clients.remove(c)
         log.debug("len(self.mobile_clients): %d", len(self.mobile_clients))
 
+    def bt_disconnect_handler(self, addr):
+        log.debug(f"[BT] disconnect: {addr}")
+
+        if self.bt_initializer is not None:
+            self.bt_initializer.restart_rfcomm_listener()
 
     async def start_all_server(self):
         log.debug("")
+        # TCP / UDP / Unix
         self.tcp_server = TCPServer(self.tcp_host, self.tcp_port)
         self.tcp_server.tcp_data_received.connect(self.tcp_data_recv_handler)
         self.tcp_server.mobile_disconnected.connect(self.mobile_client_disconnect)
+
         self.udp_server = UDPServer(self.udp_host, self.udp_port)
         self.unix_server = UnixServer(self.unix_server_path)
         self.unix_server.send_msg_to_mobile.connect(self.send_msg_to_mobile)
+
         self.demo_app_unix_client = UnixClient(UNIX_DEMO_APP_SERVER_URI)
         self.le_app_unix_client = UnixClient(UNIX_LE_SERVER_URI)
         self.sys_app_unix_client = UnixClient(UNIX_SYS_SERVER_URI)
+
         await self.tcp_server.start()
         await self.udp_server.start()
         await self.unix_server.start()
         await self.demo_app_unix_client.connect()
         await self.le_app_unix_client.connect()
         await self.sys_app_unix_client.connect()
+
+        if platform.machine() == "aarch64":
+            # BT init
+            self.bt_initializer = BtInitializer(
+                bt_name=BT_NAME,
+                bt_class=BT_CLASS,
+                channel=BT_RFCOMM_CHANNEL,
+            )
+            self.bt_initializer.init()
+
+            # BT transport
+            self.bt_server = BtRfcommTransport("/dev/rfcomm0")
+            self.bt_server.bt_data_received.connect(self.tcp_data_recv_handler)
+            self.bt_server.bt_disconnected.connect(self.bt_disconnect_handler)
+            self.bt_server.start()
         ''''# === 測試用 新增：每 5 秒觸發一次 test_send_unix_msg ===
         self.timer = QTimer(self)
         self.timer.setInterval(5000)  # 5 秒
@@ -141,11 +190,11 @@ class AsyncWorker(QObject):
             self.loop
         )
 
-    async def test_send_unix_msg(self, unix_msg_dict:dict):
-        # log.debug("test_unix_loop")
+    async def test_send_unix_msg(self, unix_msg_dict: dict):
         if unix_msg_dict is None:
             return
 
+        sent_ok = False
 
         if unix_msg_dict.get('cmd').startswith('le'):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:le;"
@@ -154,6 +203,9 @@ class AsyncWorker(QObject):
                 await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.le_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
+
+            sent_ok = True
+
         elif unix_msg_dict.get('cmd').startswith('demo'):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:demo;"
             # log.debug(f"prefix_s: {prefix_s}")
@@ -162,6 +214,9 @@ class AsyncWorker(QObject):
                 await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'])
             else:
                 await self.demo_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
+
+            sent_ok = True
+
         elif unix_msg_dict.get('cmd').startswith('sys'):
             prefix_s = f"idx:{unix_msg_dict['idx']};src:mobile;dst:sys;"
             # log.debug(f"prefix_s: {prefix_s}")
@@ -171,7 +226,25 @@ class AsyncWorker(QObject):
             else:
                 await self.sys_app_unix_client.send(prefix_s + "cmd:" + unix_msg_dict['cmd'] + ";data:" + unix_msg_dict['data'])
 
+            sent_ok = True
 
+        # BT ACK response
+        if (
+                sent_ok and
+                BT_FORWARD_UNIX_ACK and
+                self.bt_server is not None
+        ):
+            ack_msg = (
+                f"idx:{unix_msg_dict['idx']};"
+                f"src:msg;"
+                f"dst:Mobile;"
+                f"cmd:{unix_msg_dict['cmd']};"
+                f"OK"
+            )
+
+            log.debug(f"[BT_ACK] TX: {ack_msg}")
+
+            self.bt_server.send(ack_msg)
 
 
     async def async_job(self, cmd:str, data=None):

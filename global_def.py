@@ -15,6 +15,7 @@ UNIX_SOCKET_BUFFER_SIZE = 8*1024*1024
 
 MOBILE_TCP_PORT_DEFAULT = 55688
 
+# WiFi Configuration
 if platform.machine() == "aarch64":
     LOCAL_IP = "0.0.0.0"
 else:
@@ -27,3 +28,9 @@ UNIX_LE_SERVER_URI = '/tmp/ipc_le_server.sock'
 
 STR_REPLY_OK = ";OK"
 STR_REPLY_NG = ";NG"
+
+# Bluetooth Configuration
+BT_NAME = "imx93frdm"
+BT_CLASS = "0x2c0000"  # Device Identifie
+BT_RFCOMM_CHANNEL = 1  # Default RFCOMM channel
+BT_FORWARD_UNIX_ACK = True
