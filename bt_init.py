@@ -1,4 +1,5 @@
 import subprocess
+import threading
 import time
 
 from global_def import *
@@ -19,7 +20,10 @@ class BtInitializer:
 
         self.bluetoothd_proc = None
         self.rfcomm_procs = {}
+        self.rfcomm_locks = {}
         self.agent = None
+        self._rfcomm_recovery_lock = threading.Lock()
+        self._rfcomm_recovery_running = False
 
 
     def run(self, cmd: str):
@@ -132,9 +136,9 @@ class BtInitializer:
         log.debug("[BT_INIT] start rfcomm listener dev=%s ch=%s", dev_path, channel)
 
         try:
-            self.stop_rfcomm_listener(dev_path)
+            # self.stop_rfcomm_listener(dev_path)
 
-            time.sleep(1)
+            # time.sleep(1)
 
             proc = subprocess.Popen(
                 [
@@ -163,11 +167,28 @@ class BtInitializer:
             self.rfcomm_procs.pop(dev_path, None)
 
     def restart_rfcomm_listener(self, dev_path, channel):
-        log.debug("[BT_INIT] restart rfcomm listener dev=%s ch=%s", dev_path, channel)
+        lock = self.rfcomm_locks.setdefault(dev_path, threading.Lock())
 
-        self.stop_rfcomm_listener(dev_path)
-        time.sleep(1)
-        self.start_rfcomm_listener(dev_path, channel)
+        with lock:
+            try:
+                log.debug(
+                    "[BT_INIT] restart rfcomm listener dev=%s ch=%s",
+                    dev_path,
+                    channel,
+                )
+
+                self.stop_rfcomm_listener(dev_path)
+
+                time.sleep(1)
+
+                self.start_rfcomm_listener(dev_path, channel)
+
+            except Exception:
+                log.debug(
+                    "[BT_INIT] restart rfcomm listener failed dev=%s ch=%s",
+                    dev_path,
+                    channel,
+                )
 
     def stop_rfcomm_listener(self, dev_path=None):
         log.debug("[BT_INIT] stop rfcomm listener dev=%s", dev_path)
@@ -229,3 +250,104 @@ class BtInitializer:
 
                 self.rfcomm_procs.pop(dev, None)
                 self.start_rfcomm_listener(dev, ch)
+
+    def trigger_rfcomm_recovery(self):
+        with self._rfcomm_recovery_lock:
+            if self._rfcomm_recovery_running:
+                log.debug("[BT_INIT] rfcomm recovery already running, skip")
+                return
+
+            self._rfcomm_recovery_running = True
+
+            log.debug(
+                "[BT_INIT] rfcomm recovery trigger accepted self=%s",
+                id(self),
+            )
+
+        threading.Thread(
+            target=self._rfcomm_recovery_worker,
+            name="rfcomm-recovery",
+            daemon=True,
+        ).start()
+
+    def _rfcomm_recovery_worker(self):
+        log.debug(
+            "[BT_INIT] rfcomm recovery worker start self=%s",
+            id(self),
+        )
+
+        try:
+            max_rounds = 10
+            interval_sec = 2
+
+            for round_idx in range(1, max_rounds + 1):
+
+                try:
+                    log.debug(
+                        "[BT_INIT] rfcomm recovery round=%d",
+                        round_idx,
+                    )
+
+                    cmd_ok = self.ensure_rfcomm_listener(
+                        BT_RFCOMM_CMD_DEV,
+                        BT_RFCOMM_CMD_CHANNEL,
+                    )
+
+                    data_ok = self.ensure_rfcomm_listener(
+                        BT_RFCOMM_DATA_DEV,
+                        BT_RFCOMM_DATA_CHANNEL,
+                    )
+
+                    if cmd_ok and data_ok:
+                        log.debug("[BT_INIT] rfcomm recovery success")
+                        return
+
+                except Exception:
+                    log.debug("[BT_INIT] rfcomm recovery round failed")
+
+                time.sleep(interval_sec)
+
+            log.error("[BT_INIT] rfcomm recovery failed after retry")
+
+        finally:
+            with self._rfcomm_recovery_lock:
+                self._rfcomm_recovery_running = False
+
+            log.debug(
+                "[BT_INIT] rfcomm recovery worker exit self=%s",
+                id(self),
+            )
+
+    def ensure_rfcomm_listener(self, dev_path, channel):
+        try:
+            if self.is_rfcomm_listener_alive(dev_path):
+                return True
+
+            log.debug(
+                "[BT_INIT] rfcomm listener not alive, restart dev=%s ch=%s",
+                dev_path,
+                channel,
+            )
+
+            self.restart_rfcomm_listener(dev_path, channel)
+
+            time.sleep(0.5)
+
+            return self.is_rfcomm_listener_alive(dev_path)
+
+        except Exception:
+            log.debug(
+                "[BT_INIT] ensure rfcomm listener failed dev=%s ch=%s",
+                dev_path,
+                channel,
+            )
+
+            return False
+
+    def is_rfcomm_listener_alive(self, dev_path):
+        proc = self.rfcomm_procs.get(dev_path)
+
+        if proc is None:
+            return False
+
+        return proc.poll() is None

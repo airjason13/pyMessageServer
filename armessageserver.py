@@ -138,19 +138,13 @@ class AsyncWorker(QObject):
         log.debug(f"[BT_CMD] disconnect: {addr}")
 
         if self.bt_initializer is not None:
-            self.bt_initializer.restart_rfcomm_listener(
-                BT_RFCOMM_CMD_DEV,
-                BT_RFCOMM_CMD_CHANNEL,
-            )
+            self.bt_initializer.trigger_rfcomm_recovery()
 
     def bt_data_disconnect_handler(self, addr):
         log.debug(f"[BT_DATA] disconnect: {addr}")
 
         if self.bt_initializer is not None:
-            self.bt_initializer.restart_rfcomm_listener(
-                BT_RFCOMM_DATA_DEV,
-                BT_RFCOMM_DATA_CHANNEL,
-            )
+            self.bt_initializer.trigger_rfcomm_recovery()
 
     async def start_all_server(self):
         log.debug("")
