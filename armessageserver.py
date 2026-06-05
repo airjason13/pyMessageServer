@@ -112,6 +112,9 @@ class AsyncWorker(QObject):
 
     def send_msg_to_mobile(self, send_data: str):
         # WiFi / TCP mobile
+        # log.debug("========== SEND TO MOBILE ==========")
+        # log.debug(repr(send_data))
+        # log.debug("====================================")
         for c in self.mobile_clients:
             log.debug(f"Send: {send_data}")
             asyncio.run_coroutine_threadsafe(
@@ -121,8 +124,9 @@ class AsyncWorker(QObject):
 
         # BT final data response goes through CH2
         if self.bt_data_server is not None:
-            log.debug(f"[BT_DATA] TX final data: {send_data}")
-            self.bt_data_server.send(send_data)
+            bt_send_data = send_data + "\0"
+            log.debug(f"[BT_DATA] TX final data: {repr(bt_send_data)}")
+            self.bt_data_server.send(bt_send_data)
 
     # mobile 斷線後要把tcp client 清除
     def mobile_client_disconnect(self, tuple):
