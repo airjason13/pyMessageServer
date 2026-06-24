@@ -30,7 +30,7 @@ STR_REPLY_OK = ";OK"
 STR_REPLY_NG = ";NG"
 
 # Bluetooth Configuration
-BT_NAME = "imx93frdm"
+BT_NAME = "GIS_AR"
 BT_CLASS = "0x2c0000"  # Device Identifie
 
 BT_RFCOMM_CMD_DEV = "/dev/rfcomm0"
