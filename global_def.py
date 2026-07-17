@@ -30,8 +30,25 @@ STR_REPLY_OK = ";OK"
 STR_REPLY_NG = ";NG"
 
 # Bluetooth Configuration
+
+'''
+BT_NAME is a default bt device name.
+1. find the prefix of the bt_name defined in BT_CONF_URI
+2. find the tail of the bt mac with bluetoothctl
+3. The final BT_NAME show in device is {prefix_bt_name}_{tail_bt_mac}
+Upon method is wrote in bt_init.py.
+If there is no BT_CONF_URI or no bt_name defined in BT_CONF_URI, 
+use the default BT_NAME defined in global_def.py. 
+'''
 BT_NAME = "GIS_AR"
-BT_CLASS = "0x2c0000"  # Device Identifie
+BT_CLASS = "0x000704"  # Device Identifie
+'''
+    Class: 0x000704
+	Service Classes: Unspecified
+	Device Class: Uncategorized, Wrist Watch
+	If audio in CLASS, rfcomm will be jammed.
+'''
+#BT_CLASS = "0x2c0000"  # Device Identifie
 
 BT_RFCOMM_CMD_DEV = "/dev/rfcomm0"
 BT_RFCOMM_DATA_DEV = "/dev/rfcomm1"

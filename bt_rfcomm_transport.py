@@ -235,4 +235,5 @@ class BtRfcommTransport(QObject):
                 log.exception("[BT] loop error")
 
             self._close_fd()
+
             time.sleep(1)
