@@ -44,6 +44,122 @@ class BtInitializer:
 
     def init(self):
 
+        log.debug("[BT_INIT] V1 start")
+
+        # cleanup ofono
+        self.run("systemctl disable ofono.service || true")
+        self.run("systemctl stop ofono.service || true")
+
+        # cleanup old state
+        self.run("systemctl stop bluetooth || true")
+
+        # kill old rfcomm listener only
+        self.run('pkill -f "rfcomm listen" || true')
+
+        # kill old bluetoothd
+        self.run("killall bluetoothd || true")
+        time.sleep(1)
+
+        # start bluetoothd compatibility mode
+        self.bluetoothd_proc = subprocess.Popen(
+            [
+                self.bluetoothd_path,
+                "-C",
+                "-n",
+                "-P", "a2dp,hfp,avrcp"  # 建議加上這行來禁用音訊 profile
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        # wait bluetoothd ready
+        time.sleep(2)
+
+        # controller init
+        self.run("modprobe btnxpuart || true")
+        # ==== 加入這段：等待網卡索引 (hci0) 真正生出來 ====
+        log.debug("[BT_INIT] Waiting for HCI index to be ready...")
+        for _ in range(15):  # 最多等 15 秒
+            result = subprocess.run(
+                "btmgmt info | grep -q 'hci0'",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            if result.returncode == 0:
+                log.debug("[BT_INIT] HCI index is ready!")
+                break
+            time.sleep(1)
+        # ==================================================
+
+        # 將原本的 self.bt_name.append(...) 改成：
+        self.bt_name = f"{self.bt_name}_{self.get_hci0_mac_tail()}"
+
+        self.run("btmgmt power off || true")
+
+        # self.run(f"btmgmt name '{self.bt_name}' '{self.bt_name}' || true")
+
+        self.run(f"btmgmt class {self.bt_class} || true")
+
+        self.run("btmgmt power on || true")
+
+        self.run("btmgmt connectable yes || true")
+        self.run("btmgmt discov yes || true")
+
+        # wait hci0 ready (改用 btmgmt info 來檢查)
+        for _ in range(10):
+            result = subprocess.run(
+                "btmgmt info",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            if result.returncode == 0:
+                break
+            time.sleep(1)
+
+        # power / discoverable / pairable
+        self.run(
+            f"""bluetoothctl <<EOF
+        power on
+        system-alias '{self.bt_name}'
+        discoverable-timeout 0
+        pairable-timeout 0
+        discoverable on
+        pairable on
+        EOF"""
+        )
+
+        log.debug(f"[BT_INIT] bt class : {self.bt_class}")
+
+        # start auto pairing agent
+        self.agent = AutoAgent()
+        self.agent.start()
+
+        # register SPP services
+        self.run(
+            f"sdptool add --channel={BT_RFCOMM_CMD_CHANNEL} SP || true"
+        )
+
+        self.run(
+            f"sdptool add --channel={BT_RFCOMM_DATA_CHANNEL} SP || true"
+        )
+
+        # start rfcomm listeners
+        self.start_rfcomm_listener(
+            BT_RFCOMM_CMD_DEV,
+            BT_RFCOMM_CMD_CHANNEL,
+        )
+
+        self.start_rfcomm_listener(
+            BT_RFCOMM_DATA_DEV,
+            BT_RFCOMM_DATA_CHANNEL,
+        )
+
+        log.debug("[BT_INIT] done")
+
+    def init_dep_2(self):
+
         log.debug("[BT_INIT] start")
 
         # cleanup old state
