@@ -51,13 +51,15 @@ class BtInitializer:
         self.run("systemctl stop ofono.service || true")
 
         # cleanup old state
+        self.run("systemctl disable bluetooth || true")
         self.run("systemctl stop bluetooth || true")
 
         # kill old rfcomm listener only
         self.run('pkill -f "rfcomm listen" || true')
 
         # kill old bluetoothd
-        self.run("killall bluetoothd || true")
+        # self.run("killall bluetoothd || true")
+
         time.sleep(1)
 
         # start bluetoothd compatibility mode
@@ -80,46 +82,39 @@ class BtInitializer:
         # ==== 加入這段：等待網卡索引 (hci0) 真正生出來 ====
         log.debug("[BT_INIT] Waiting for HCI index to be ready...")
         for _ in range(15):  # 最多等 15 秒
-            result = subprocess.run(
-                "btmgmt info | grep -q 'hci0'",
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            if result.returncode == 0:
+            if os.path.exists("/sys/class/bluetooth/hci0"):
                 log.debug("[BT_INIT] HCI index is ready!")
+                time.sleep(3)
                 break
-            time.sleep(1)
+        time.sleep(1)
         # ==================================================
 
+        log.debug("[BT_INIT] HCI ready...")
         # 將原本的 self.bt_name.append(...) 改成：
         self.bt_name = f"{self.bt_name}_{self.get_hci0_mac_tail()}"
 
-        self.run("btmgmt power off || true")
-
-        # self.run(f"btmgmt name '{self.bt_name}' '{self.bt_name}' || true")
+        # useless
+        '''self.run("btmgmt power off || true")
+        log.debug(f"[BT_INIT] bt_name: {self.bt_name}")
 
         self.run(f"btmgmt class {self.bt_class} || true")
+        log.debug(f"[BT_INIT] bt_class: {self.bt_class}")
 
         self.run("btmgmt power on || true")
 
         self.run("btmgmt connectable yes || true")
-        self.run("btmgmt discov yes || true")
+        self.run("btmgmt discov yes || true")'''
 
         # wait hci0 ready (改用 btmgmt info 來檢查)
         for _ in range(10):
-            result = subprocess.run(
-                "btmgmt info",
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            if result.returncode == 0:
+            # 確保設備節點已經確實存在
+            if os.path.exists("/sys/class/bluetooth/hci0"):
                 break
             time.sleep(1)
+        log.debug(f"[BT_INIT] hci0 node checked")
 
         # power / discoverable / pairable
-        self.run(
+        '''self.run(
             f"""bluetoothctl <<EOF
         power on
         system-alias '{self.bt_name}'
@@ -128,9 +123,15 @@ class BtInitializer:
         discoverable on
         pairable on
         EOF"""
-        )
+        )'''
 
-        log.debug(f"[BT_INIT] bt class : {self.bt_class}")
+        self.run(f"bluetoothctl system-alias '{self.bt_name}' || true")
+        self.run("bluetoothctl discoverable-timeout 0 || true")
+        self.run("bluetoothctl pairable-timeout 0 || true")
+        self.run("bluetoothctl discoverable on || true")
+        self.run("bluetoothctl pairable on || true")
+
+        log.debug(f"[BT_INIT] pairable")
 
         # start auto pairing agent
         self.agent = AutoAgent()
