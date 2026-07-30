@@ -56,6 +56,7 @@ class BtInitializer:
 
         # kill old rfcomm listener only
         self.run('pkill -f "rfcomm listen" || true')
+        self.run('pkill -f "rfcomm watch" || true')  # 🌟 補上這行
 
         # kill old bluetoothd
         # self.run("killall bluetoothd || true")
@@ -355,6 +356,7 @@ class BtInitializer:
                 start_new_session=True,
             )
 
+
             self.rfcomm_procs[dev_path] = proc
 
             log.debug(
@@ -428,9 +430,17 @@ class BtInitializer:
 
         if dev_path is None:
             self.run("rfcomm release all || true")
-            self.run('pkill -f "rfcomm listen" || true')
+            self.run('pkill -f "rfcomm listen" || true')  # 殺掉舊版的
+            self.run('pkill -f "rfcomm watch" || true')  # 殺掉新版的
         else:
             self.run(f"rfcomm release {dev_path} || true")
+            self.run(f"pkill -f 'rfcomm watch {dev_path}' || true")
+
+        '''if dev_path is None:
+            self.run("rfcomm release all || true")
+            self.run('pkill -f "rfcomm listen" || true')
+        else:
+            self.run(f"rfcomm release {dev_path} || true")'''
 
     def check_rfcomm_listener(self):
         for dev, ch in [
@@ -451,7 +461,8 @@ class BtInitializer:
                 )
 
                 self.rfcomm_procs.pop(dev, None)
-                self.start_rfcomm_listener(dev, ch)
+                # self.start_rfcomm_listener(dev, ch)
+                self.restart_rfcomm_listener(dev, ch)
 
     def trigger_rfcomm_recovery(self):
         with self._rfcomm_recovery_lock:

@@ -1,12 +1,13 @@
 # auto_agent.py
 
 import threading
+import time
 
 import dbus
 import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
-
+from bt_tracker import BtStateTracker
 from global_def import *
 
 
@@ -17,6 +18,26 @@ CAPABILITY = "KeyboardDisplay"
 
 
 class BluezAutoAgent(dbus.service.Object):
+    def __init__(self, bus, path):
+        super().__init__(bus, path)
+        self.tracker = BtStateTracker()  # 🌟 初始化 Tracker (Singleton)
+
+    def _rfcomm_watchdog(self):
+        log.debug("[BT_WATCHDOG] Start waiting for RFCOMM socket...")
+        time.sleep(5)  # 寬限期 15 秒
+
+        # 檢查 15 秒後的狀態
+        if self.tracker.state["is_bt_authorized"] and not self.tracker.state["is_rfcomm_connected"]:
+            log.warning("[BT_WATCHDOG] BT is connected but RFCOMM timeout! Zombie state detected.")
+
+            # 觸發強制重置 (踢掉無效連線並重啟 listen)
+            if self.bt_init:
+                log.debug("[BT_WATCHDOG] Triggering RFCOMM recovery...")
+                # 這會呼叫你 bt_init.py 裡面已經寫好的 trigger_rfcomm_recovery()
+                self.bt_init.trigger_rfcomm_recovery()
+
+                # 重置狀態
+            self.tracker.set_bt_authorized(False)
 
     @dbus.service.method("org.bluez.Agent1", in_signature="", out_signature="")
     def Release(self):
@@ -25,6 +46,11 @@ class BluezAutoAgent(dbus.service.Object):
     @dbus.service.method("org.bluez.Agent1", in_signature="os", out_signature="")
     def AuthorizeService(self, device, uuid):
         log.debug(f"[BT_AGENT] AuthorizeService device={device}, uuid={uuid}")
+        # 🌟 累加藍牙授權次數與更新時間
+        self.tracker.set_bt_authorized(True)
+
+        # 啟動 RFCOMM 看門狗 (給手機 APP 15 秒的時間去開啟 Socket)
+        threading.Thread(target=self._rfcomm_watchdog, daemon=True).start()
         return
 
     @dbus.service.method("org.bluez.Agent1", in_signature="o", out_signature="")

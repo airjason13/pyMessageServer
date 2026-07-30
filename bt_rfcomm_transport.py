@@ -4,7 +4,7 @@ import threading
 import select
 import termios
 import tty
-
+from bt_tracker import BtStateTracker
 from PyQt5.QtCore import QObject, pyqtSignal
 
 from global_def import *
@@ -30,6 +30,8 @@ class BtRfcommTransport(QObject):
 
         # 8 KB read buffer
         self.read_chunk_size = 8192
+
+        self.tracker = BtStateTracker()  # 🌟 初始化 Tracker (Singleton)
 
     def start(self):
         if self._running:
@@ -161,14 +163,17 @@ class BtRfcommTransport(QObject):
 
                 log.debug(f"[BT] open {self.dev_path}")
 
+                # 🌟 1. 加入 os.O_NONBLOCK 避免開啟時卡死
                 self._fd = os.open(
                     self.dev_path,
-                    os.O_RDWR | os.O_NOCTTY
+                    os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK
                 )
 
                 self._set_raw_no_echo()
 
                 log.debug("[BT] connected")
+                # 🌟 累加 RFCOMM 連線次數與更新時間
+                self.tracker.add_rfcomm_connect()
 
                 buffer = b""
 
@@ -191,6 +196,9 @@ class BtRfcommTransport(QObject):
 
                     if not chunk:
                         log.debug("[BT] disconnected")
+                        self._close_fd()
+                        self.tracker.set_rfcomm_connected(False)
+                        self.tracker.set_bt_authorized(False)  # 順便把 BT 狀態重置
                         self.bt_disconnected.emit(self.bt_addr)
                         break
 
